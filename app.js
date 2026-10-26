@@ -1,11 +1,12 @@
-const STORAGE_KEY = 'sound-and-service-v1';
-
 const seedData = {
   instructions: [
     { id: 'g1', title: 'Sunday sound check', category: 'Audio', content: 'Arrive 45 minutes before service. Power on the mixer and stage boxes, check microphones one at a time, then confirm playback and livestream audio.' },
     { id: 'g2', title: 'Projector & lyrics', category: 'Presentation', content: 'Open the service presentation, check the confidence monitor, and confirm lyrics with the worship leader before doors open.' },
     { id: 'g3', title: 'Livestream checklist', category: 'Streaming', content: 'Check camera framing, confirm stream destination, test audio sync, and start the stream 5 minutes before the service begins.' },
-    { id: 'g4', title: 'Pack-down & equipment care', category: 'General', content: 'Mute channels before powering down. Coil cables neatly, return microphones to their cases, and leave the booth tidy for the next team.' }
+    { id: 'g4', title: 'Pack-down & equipment care', category: 'General', content: 'Mute channels before powering down. Coil cables neatly, return microphones to their cases, and leave the booth tidy for the next team.' },
+    { id: 'g5', title: 'Front of house sound check', category: 'FOH', content: 'Listen from the congregation area and check each source in the main mix:\n□ Lead singer is clear and audible.\n□ Piano is audible and balanced with the lead singer.\n□ Backing vocalists (BGV) are audible and balanced.\n□ Bass is audible and supports the song without overpowering it.\n□ Drums are audible and balanced with the band.\n□ Recheck the overall mix with the full band playing.' },
+    { id: 'g6', title: 'Singer’s monitor mix', category: 'Monitors', content: 'Ask each singer what they need, then check their floor wedge at a comfortable level:\n□ Backing vocalists can hear themselves.\n□ Lead singer can hear themselves.\n□ Singers can hear the piano clearly.\n□ Singers can hear the loop.\n□ Confirm with the singers that the mix is comfortable before the service.' },
+    { id: 'g7', title: 'Pastor & interpreter levels', category: 'FOH', content: 'During preaching, balance speech first and keep every source clear:\n□ Pastor is the main, prominent voice.\n□ Interpreter sits just below the pastor in level and remains easy to understand.\n□ Piano, if playing, sits well below the interpreter.\n□ Backing vocalists, if asked to sing, sit just below the interpreter.\n□ Recheck the balance from the congregation area.' }
   ],
   schedule: [
     { id: 's1', date: upcomingSunday(0), time: '09:00', service: 'Sunday morning service', role: 'Audio engineer', memberId: 'm1', status: 'Confirmed' },
@@ -21,10 +22,10 @@ const seedData = {
     { id: 't5', time: '11:15', activity: 'Pack-down', location: 'Main auditorium', notes: 'Power down safely and return equipment.' }
   ],
   members: [
-    { id: 'm1', name: 'Jordan Lee', role: 'Audio', email: 'jordan@example.com', availability: 'Most Sundays' },
-    { id: 'm2', name: 'Taylor Morgan', role: 'Presentation', email: 'taylor@example.com', availability: 'Twice a month' },
-    { id: 'm3', name: 'Alex Chen', role: 'Video & cameras', email: 'alex@example.com', availability: 'Most Sundays' },
-    { id: 'm4', name: 'Sam Rivera', role: 'Team lead', email: 'sam@example.com', availability: 'Weekly' }
+    { id: 'm1', name: 'Jordan Lee', role: 'Audio', availability: 'Most Sundays' },
+    { id: 'm2', name: 'Taylor Morgan', role: 'Presentation', availability: 'Twice a month' },
+    { id: 'm3', name: 'Alex Chen', role: 'Video & cameras', availability: 'Most Sundays' },
+    { id: 'm4', name: 'Sam Rivera', role: 'Team lead', availability: 'Weekly' }
   ]
 };
 
@@ -56,9 +57,11 @@ const fieldDefinitions = {
   ]
 };
 
-let data = loadData();
+let data = { instructions: [], schedule: [], timetable: [], members: [] };
 let editing = null;
 let activeCollection = null;
+let teamPasscode = '';
+let syncInProgress = false;
 
 function futureDate(daysAhead) {
   const date = new Date();
@@ -73,24 +76,78 @@ function upcomingSunday(weeksAhead) {
   return date.toISOString().slice(0, 10);
 }
 
-function loadData() {
-  try {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    return saved ? { ...seedData, ...JSON.parse(saved) } : structuredClone(seedData);
-  } catch (error) {
-    console.error('Could not load saved team data:', error);
-    return structuredClone(seedData);
-  }
+function isBackendConfigured() {
+  return window.APP_CONFIG
+    && /^https:\/\/[^/]+\/functions\/v1\/team-data$/.test(window.APP_CONFIG.functionUrl)
+    && typeof window.APP_CONFIG.publishableKey === 'string'
+    && window.APP_CONFIG.publishableKey.length > 10
+    && !window.APP_CONFIG.functionUrl.includes('YOUR-PROJECT-REF')
+    && !window.APP_CONFIG.publishableKey.includes('YOUR_SUPABASE');
 }
 
-function saveData() {
+async function apiRequest(body, passcode = teamPasscode) {
+  const response = await fetch(window.APP_CONFIG.functionUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      apikey: window.APP_CONFIG.publishableKey,
+      Authorization: `Bearer ${window.APP_CONFIG.publishableKey}`,
+      'x-team-passcode': passcode
+    },
+    body: JSON.stringify(body)
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(result.error || `Shared database request failed (${response.status}).`);
+  return result;
+}
+
+async function loadSharedData(passcode, initialize = true) {
+  let result = await apiRequest({ action: 'load', seedData: initialize ? seedData : undefined }, passcode);
+  if (!result.data || typeof result.data !== 'object') throw new Error('The shared database returned an invalid response.');
+  data = {
+    instructions: Array.isArray(result.data.instructions) ? result.data.instructions : [],
+    schedule: Array.isArray(result.data.schedule) ? result.data.schedule : [],
+    timetable: Array.isArray(result.data.timetable) ? result.data.timetable : [],
+    members: Array.isArray(result.data.members) ? result.data.members : []
+  };
+  return data;
+}
+
+function setConnectionStatus(message, connected) {
+  document.getElementById('connection-label').textContent = message;
+  document.getElementById('connection-dot').classList.toggle('offline', !connected);
+  document.getElementById('lock-button').hidden = !connected;
+}
+
+async function saveItem(collection, item) {
+  await apiRequest({ action: 'upsert', collection, item });
+  const index = data[collection].findIndex((entry) => entry.id === item.id);
+  if (index < 0) data[collection].push(item);
+  else data[collection][index] = item;
+  setConnectionStatus('Shared and saved', true);
+  renderAll();
+}
+
+async function removeItem(collection, item) {
+  await apiRequest({ action: 'delete', collection, id: item.id });
+  data[collection] = data[collection].filter((entry) => entry.id !== item.id);
+  if (collection === 'members') data.schedule.forEach((shift) => { if (shift.memberId === item.id) shift.memberId = ''; });
+  setConnectionStatus('Shared and saved', true);
+  renderAll();
+}
+
+async function refreshSharedData() {
+  if (!teamPasscode || syncInProgress || document.getElementById('edit-dialog').open) return;
+  syncInProgress = true;
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-    return true;
+    await loadSharedData(teamPasscode, false);
+    renderAll();
+    setConnectionStatus('Shared and synced', true);
   } catch (error) {
-    console.error('Could not save team data:', error);
-    alert('Your changes could not be saved in this browser. Check available storage and try again.');
-    return false;
+    console.error('Could not refresh shared team data:', error);
+    setConnectionStatus('Sync issue', false);
+  } finally {
+    syncInProgress = false;
   }
 }
 
@@ -217,12 +274,17 @@ function openEditor(collection, id = null) {
   document.getElementById('edit-dialog').showModal();
 }
 
-function deleteItem(collection, id) {
+async function deleteItem(collection, id) {
   const item = data[collection].find((entry) => entry.id === id);
   if (!item || !confirm(`Delete “${item.title || item.name || item.activity || item.service}”? This cannot be undone.`)) return;
-  data[collection] = data[collection].filter((entry) => entry.id !== id);
-  if (collection === 'members') data.schedule.forEach((shift) => { if (shift.memberId === id) shift.memberId = ''; });
-  if (saveData()) renderAll();
+  setConnectionStatus('Saving…', true);
+  try {
+    await removeItem(collection, item);
+  } catch (error) {
+    console.error('Could not delete shared team item:', error);
+    setConnectionStatus('Save failed', false);
+    alert(error.message);
+  }
 }
 
 document.querySelectorAll('.nav-item').forEach((button) => button.addEventListener('click', () => setPage(button.dataset.page)));
@@ -249,13 +311,82 @@ document.getElementById('edit-form').addEventListener('submit', (event) => {
   if (activeCollection === 'members' && !next.availability) delete next.availability;
   if (activeCollection === 'timetable' && !next.notes) delete next.notes;
   if (activeCollection === 'timetable' && !next.location) delete next.location;
-  if (editing) data[activeCollection] = data[activeCollection].map((item) => item.id === editing.id ? next : item);
-  else data[activeCollection].push(next);
-  if (saveData()) {
+  const submitButton = event.currentTarget.querySelector('[type="submit"]');
+  submitButton.disabled = true;
+  setConnectionStatus('Saving…', true);
+  saveItem(activeCollection, next).then(() => {
     document.getElementById('edit-dialog').close();
-    renderAll();
-  }
+  }).catch((error) => {
+    console.error('Could not save shared team item:', error);
+    setConnectionStatus('Save failed', false);
+    alert(error.message);
+  }).finally(() => {
+    submitButton.disabled = false;
+  });
 });
 
 document.getElementById('today-label').textContent = new Intl.DateTimeFormat(undefined, { weekday: 'short', month: 'short', day: 'numeric' }).format(new Date());
-renderAll();
+
+const accessDialog = document.getElementById('access-dialog');
+const accessForm = document.getElementById('access-form');
+const accessError = document.getElementById('access-error');
+const passcodeInput = document.getElementById('team-passcode');
+
+async function unlockWorkspace(passcode) {
+  if (!isBackendConfigured()) {
+    throw new Error('The shared database is not configured yet. Follow the Supabase setup steps in the README.');
+  }
+  await loadSharedData(passcode);
+  teamPasscode = passcode;
+  sessionStorage.setItem('sound-and-service-passcode', passcode);
+  document.querySelector('.app-shell').removeAttribute('inert');
+  accessDialog.close();
+  setConnectionStatus('Shared and synced', true);
+  renderAll();
+}
+
+accessForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const submitButton = document.getElementById('access-submit');
+  submitButton.disabled = true;
+  accessError.textContent = '';
+  try {
+    await unlockWorkspace(passcodeInput.value);
+  } catch (error) {
+    console.error('Could not open the shared team workspace:', error);
+    accessError.textContent = error.message;
+    passcodeInput.select();
+  } finally {
+    submitButton.disabled = false;
+  }
+});
+
+document.getElementById('lock-button').addEventListener('click', () => {
+  sessionStorage.removeItem('sound-and-service-passcode');
+  teamPasscode = '';
+  data = { instructions: [], schedule: [], timetable: [], members: [] };
+  renderAll();
+  document.querySelector('.app-shell').setAttribute('inert', '');
+  setConnectionStatus('Locked', false);
+  passcodeInput.value = '';
+  accessError.textContent = '';
+  accessDialog.showModal();
+});
+
+document.querySelector('.app-shell').setAttribute('inert', '');
+accessDialog.showModal();
+const savedPasscode = sessionStorage.getItem('sound-and-service-passcode');
+if (savedPasscode) {
+  passcodeInput.value = savedPasscode;
+  unlockWorkspace(savedPasscode).catch((error) => {
+    console.error('Could not restore shared team access:', error);
+    sessionStorage.removeItem('sound-and-service-passcode');
+    accessError.textContent = error.message;
+    passcodeInput.value = '';
+  });
+}
+
+window.setInterval(refreshSharedData, 30_000);
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') refreshSharedData();
+});

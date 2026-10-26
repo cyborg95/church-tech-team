@@ -41,8 +41,9 @@
           <div class="breadcrumb">Team workspace <span>/</span> <strong id="crumb">Overview</strong></div>
           <div class="topbar-right">
             <span class="today-label" id="today-label"></span>
-            <span class="online-dot" title="Your changes are saved in this browser"></span>
-            <span class="save-label">Saved locally</span>
+            <span class="online-dot" id="connection-dot" title="Connection status"></span>
+            <span class="save-label" id="connection-label">Connecting…</span>
+            <button type="button" class="lock-button" id="lock-button" hidden>Lock</button>
           </div>
         </header>
         <div class="page-wrap">
@@ -87,7 +88,7 @@
                 <button class="quick-link" data-go="timetable"><span class="quick-icon quick-green">◷</span><span><strong>Service flow</strong><small>Know what’s happening when</small></span><b>→</b></button>
               </div>
             </section>
-            <p class="privacy-note"><span>ⓘ</span> This starter app saves data only in this browser. It has no sign-in or shared database yet; don’t enter private member information.</p>
+            <p class="privacy-note"><span>ⓘ</span> Team data is shared with people who know the passcode. Avoid storing sensitive personal information.</p>
           </section>
 
           <section id="page-schedule" class="page" aria-labelledby="schedule-title">
@@ -122,7 +123,7 @@
               <div><div class="eyebrow">BETTER TOGETHER</div><h1 id="members-title">Team members</h1><p class="page-subtitle">Get to know the people serving behind the scenes.</p></div>
               <button class="button button-primary" data-add="members">＋ Add a member</button>
             </div>
-            <div class="privacy-banner"><span>ⓘ</span><span>For privacy, this demo stores information in this browser only. Use fictional details until you add secure sign-in and shared storage.</span></div>
+            <div class="privacy-banner"><span>ⓘ</span><span>Team members with the shared passcode can view and edit this list. Only add contact details the team needs.</span></div>
             <div class="list-toolbar"><label class="search-box"><span>⌕</span><input type="search" placeholder="Search members..." data-search="members" aria-label="Search members"></label><span id="members-count" class="result-count"></span></div>
             <div id="members-list" class="member-grid"></div>
           </section>
@@ -136,6 +137,16 @@
         <div class="dialog-actions"><button type="button" class="button button-secondary close-dialog">Cancel</button><button type="submit" class="button button-primary">Save</button></div>
       </form>
     </dialog>
+    <dialog id="access-dialog" class="edit-dialog access-dialog">
+      <form id="access-form">
+        <div class="dialog-heading"><div><div class="eyebrow">SOUND & SERVICE</div><h2>Team access</h2></div></div>
+        <p class="access-copy">Enter the shared team passcode to open the schedule, guides, and member list.</p>
+        <label class="field-label" for="team-passcode">Team passcode<input id="team-passcode" name="passcode" type="password" autocomplete="current-password" required></label>
+        <p id="access-error" class="access-error" role="alert"></p>
+        <div class="dialog-actions"><button type="submit" class="button button-primary" id="access-submit">Continue</button></div>
+      </form>
+    </dialog>
+    <script src="config.js"></script>
     <script src="app.js"></script>
   </body>
 </html>

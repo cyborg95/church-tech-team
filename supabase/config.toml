@@ -1,0 +1,2 @@
+[functions.team-data]
+verify_jwt = false

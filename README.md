@@ -1,29 +1,68 @@
 # Sound & Service — Church Tech Team
 
-A small, static web app for a church technical department. It includes a team overview, serving schedule, service timetable, instructions, and member list.
+A small web app for a church technical department. It includes a team overview, serving schedule, service timetable, instructions, and member list. Team data is stored in Supabase and shared between people using the same passcode.
 
-## Run it locally
+## Important access and privacy notes
 
-Open `index.html` in a browser. The app saves changes in that browser's local storage.
+- Anyone who knows the shared passcode can view, add, change, and delete team data. Use a long, unique passphrase and share it only with the team.
+- The passcode is checked by a Supabase Edge Function and is kept in Supabase secrets, not in the website source. The browser remembers it for the current tab session only.
+- This is a basic shared-passcode setup, not individual accounts or a full audit trail. Avoid sensitive personal information. Rotate the passcode in Supabase if it is shared too widely.
+
+## Configure the shared database
+
+1. Create a Supabase project at [supabase.com](https://supabase.com).
+2. In the Supabase SQL Editor, run the contents of [`supabase/schema.sql`](./supabase/schema.sql). The table denies direct access from normal browser roles; reads and changes go through the Edge Function.
+3. In the VS Code terminal, make sure you are in this project folder. Install the Supabase CLI as a local development tool, then sign in:
+
+   ```sh
+   npm install --save-dev supabase
+   npx supabase login
+   ```
+
+   `npm install` updates the local `package.json` and lockfile. Use `npx supabase` for the remaining CLI commands; the plain `supabase` command may still not be available globally.
+4. Find your project ref under **Project Settings → General** in Supabase, then link this folder and deploy the function:
+
+   ```sh
+   npx supabase link --project-ref YOUR-PROJECT-REF
+   npx supabase functions deploy team-data
+   ```
+
+5. In the Supabase dashboard, open **Edge Functions → Secrets** (sometimes shown under **Project Settings → Edge Functions**) and add a secret:
+   - Name: `TEAM_SHARED_PASSCODE`
+   - Value: choose a private passphrase of at least 12 characters. Share it only with your team.
+
+   Click **Save**. Supabase provides the `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` to Edge Functions automatically. Never copy the service-role key into `config.js`, the website, or a message. If you already deployed the function, saving the secret should make it available to the function; if Supabase reports otherwise, redeploy it with `npx supabase functions deploy team-data`.
+6. In project settings, copy the project URL and publishable key. Set them in [`config.js`](./config.js):
+
+   ```js
+   window.APP_CONFIG = {
+     functionUrl: 'https://YOUR-PROJECT-REF.supabase.co/functions/v1/team-data',
+     publishableKey: 'YOUR_SUPABASE_PUBLISHABLE_KEY'
+   };
+   ```
+
+   The publishable key is intended for browser use. The database stays protected by the Edge Function and its server-side passcode check.
+
+The first successful connection adds example content to an empty team database. The FOH, singer monitor, and pastor/interpreter guides are also added to existing team databases the first time the updated function is deployed and opened. Existing guide edits are preserved. You can edit or delete the examples in the app.
+
+To deploy a future change to the Supabase function, run `npx supabase functions deploy team-data` again. Website changes are published separately by pushing to GitHub.
 
 ## Publish with GitHub Pages
 
-1. On GitHub, create a new repository. You can name it `church-tech-team`. Leave **Add a README file** unchecked.
-2. In a terminal, go to this project folder and run the following commands. Replace `YOUR-USERNAME` and `YOUR-REPOSITORY` with your GitHub username and repository name.
+1. Create a GitHub repository, for example `church-tech-team`.
+2. In a terminal at this project folder, stage and push the project. If you have not yet connected this folder to GitHub, follow GitHub's instructions to create a repository and add it as `origin` first.
 
    ```sh
-   git init -b main
-   git add index.html styles.css app.js README.md .github/workflows/deploy.yml
-   git commit -m "Create church tech team app"
-   git remote add origin https://github.com/YOUR-USERNAME/YOUR-REPOSITORY.git
-   git push -u origin main
+   git add index.html styles.css app.js config.js README.md .gitignore .github/workflows/deploy.yml supabase
+   git commit -m "Add shared team data"
+   git push
    ```
 
-3. Make sure the account that owns the repository allows GitHub Actions to manage Pages. The workflow requests the `pages: write` permission and enables Pages automatically on its first run. If your repository or organization restricts this, open **Settings → Pages** and select **GitHub Actions** as the build and deployment source.
-4. Open the **Actions** tab and wait for **Deploy to GitHub Pages** to finish. The published address will be shown in the Pages settings and in the completed workflow run. It is usually `https://YOUR-USERNAME.github.io/YOUR-REPOSITORY/`.
+3. In the GitHub repository, open **Settings → Pages** and choose **GitHub Actions** as the deployment source if needed.
+4. Open **Actions**, wait for **Deploy to GitHub Pages** to finish, then use the URL shown in the Pages settings.
 
-Later, push changes to the `main` branch to publish an update.
+The Pages workflow publishes only the static website files, not the Supabase function source. Push future website changes to `main` to publish them.
 
-## Important data note
+## Run locally
 
-This version has no login or shared database. Changes are saved only in the current browser on the current device; other team members will not see them. Do not enter private member information until secure sign-in and shared storage are added.
+After configuring `config.js` and deploying the Supabase function, serve this folder using a local web server (for example `python3 -m http.server 8000`) and open `http://localhost:8000`. Browsers may block the shared-data requests if you open `index.html` directly as a `file:` URL.
