@@ -19,7 +19,7 @@ Open `index.html` in a browser. The app saves changes in that browser's local st
    git push -u origin main
    ```
 
-3. In the repository on GitHub, open **Settings → Pages** and set the build and deployment source to **GitHub Actions** if it is not already selected.
+3. Make sure the account that owns the repository allows GitHub Actions to manage Pages. The workflow requests the `pages: write` permission and enables Pages automatically on its first run. If your repository or organization restricts this, open **Settings → Pages** and select **GitHub Actions** as the build and deployment source.
 4. Open the **Actions** tab and wait for **Deploy to GitHub Pages** to finish. The published address will be shown in the Pages settings and in the completed workflow run. It is usually `https://YOUR-USERNAME.github.io/YOUR-REPOSITORY/`.
 
 Later, push changes to the `main` branch to publish an update.
